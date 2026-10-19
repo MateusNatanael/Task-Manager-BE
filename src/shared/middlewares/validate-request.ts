@@ -15,8 +15,7 @@ export function validateBody(schema: ZodType) {
 export function validateQuery(schema: ZodType) {
   return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
     try {
-      const parsed = await schema.parseAsync(req.query);
-      req.query = parsed as typeof req.query;
+      await schema.parseAsync(req.query);
       next();
     } catch (error) {
       next(error);
@@ -27,8 +26,7 @@ export function validateQuery(schema: ZodType) {
 export function validateParams(schema: ZodType) {
   return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
     try {
-      const parsed = await schema.parseAsync(req.params);
-      req.params = parsed as typeof req.params;
+      await schema.parseAsync(req.params);
       next();
     } catch (error) {
       next(error);
