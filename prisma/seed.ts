@@ -6,12 +6,19 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Starting database seed...');
 
-  // 1. Criar ou buscar Unidade padrão
+  // 1. Criar ou buscar Unidade padrão com UUID v4 compatível
+  const unitId = '11111111-1111-4111-8111-111111111111';
+
   const unit = await prisma.unit.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000001' },
-    update: {},
+    where: { id: unitId },
+    update: {
+      name: 'Unidade Central - Matriz',
+      address: 'Av. Paulista, 1000 - São Paulo, SP',
+      criticalityFactor: 'HIGH',
+      isActive: true,
+    },
     create: {
-      id: '00000000-0000-0000-0000-000000000001',
+      id: unitId,
       name: 'Unidade Central - Matriz',
       address: 'Av. Paulista, 1000 - São Paulo, SP',
       criticalityFactor: 'HIGH',
@@ -27,7 +34,9 @@ async function main() {
   // 3. Usuário Gerente / Analista (Permissão para criar tarefas)
   const manager = await prisma.user.upsert({
     where: { email: 'manager@taskmanager.com' },
-    update: {},
+    update: {
+      unitId: unit.id,
+    },
     create: {
       name: 'Carlos Gerente',
       email: 'manager@taskmanager.com',
@@ -44,7 +53,9 @@ async function main() {
   // 4. Usuário Operador / Técnico (Para executar e receber tarefas)
   const operator = await prisma.user.upsert({
     where: { email: 'operator@taskmanager.com' },
-    update: {},
+    update: {
+      unitId: unit.id,
+    },
     create: {
       name: 'João Operador',
       email: 'operator@taskmanager.com',
@@ -61,7 +72,9 @@ async function main() {
   // 5. Equipamento de exemplo
   const equipment = await prisma.equipment.upsert({
     where: { tagId: 'GER-01' },
-    update: {},
+    update: {
+      unitId: unit.id,
+    },
     create: {
       tagId: 'GER-01',
       category: EquipmentCategory.ELECTRICAL,
