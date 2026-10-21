@@ -119,4 +119,125 @@ export class TaskRepository {
   async findByOwnerId(ownerId: string) {
     return this.findAll({ ownerId });
   }
+
+  async assignOwner(taskId: string, ownerId: string, assignedById: string, reason?: string) {
+    return prisma.$transaction(async (tx) => {
+      const currentTask = await tx.task.findUnique({ where: { id: taskId } });
+      if (!currentTask) {
+        return null;
+      }
+
+      const updatedTask = await tx.task.update({
+        where: { id: taskId },
+        data: {
+          ownerId,
+          status: TaskStatus.ASSIGNED,
+        },
+        include: {
+          unit: true,
+          equipment: true,
+          createdBy: {
+            select: { id: true, name: true, email: true, role: true },
+          },
+          owner: {
+            select: { id: true, name: true, email: true, role: true },
+          },
+        },
+      });
+
+      await tx.taskLog.create({
+        data: {
+          taskId,
+          userId: assignedById,
+          previousStatus: currentTask.status,
+          newStatus: TaskStatus.ASSIGNED,
+          reason: reason || 'Task assigned to technician/operator',
+        },
+      });
+
+      return updatedTask;
+    });
+  }
+
+  async updateStatusWithLog(params: {
+    taskId: string;
+    userId: string;
+    newStatus: TaskStatus;
+    reason?: string;
+    attachmentUrl?: string;
+    deliveryDate?: Date | null;
+    acceptedDate?: Date | null;
+  }) {
+    return prisma.$transaction(async (tx) => {
+      const currentTask = await tx.task.findUnique({ where: { id: params.taskId } });
+      if (!currentTask) {
+        return null;
+      }
+
+      const updatedTask = await tx.task.update({
+        where: { id: params.taskId },
+        data: {
+          status: params.newStatus,
+          deliveryDate: params.deliveryDate !== undefined ? params.deliveryDate : currentTask.deliveryDate,
+          acceptedDate: params.acceptedDate !== undefined ? params.acceptedDate : currentTask.acceptedDate,
+        },
+        include: {
+          unit: true,
+          equipment: true,
+          createdBy: {
+            select: { id: true, name: true, email: true, role: true },
+          },
+          owner: {
+            select: { id: true, name: true, email: true, role: true },
+          },
+        },
+      });
+
+      await tx.taskLog.create({
+        data: {
+          taskId: params.taskId,
+          userId: params.userId,
+          previousStatus: currentTask.status,
+          newStatus: params.newStatus,
+          reason: params.reason,
+          attachmentUrl: params.attachmentUrl,
+        },
+      });
+
+      return updatedTask;
+    });
+  }
+
+  async createNote(params: {
+    taskId: string;
+    userId: string;
+    text: string;
+    imageUrls: string[];
+  }) {
+    return prisma.taskNote.create({
+      data: {
+        taskId: params.taskId,
+        userId: params.userId,
+        text: params.text,
+        imageUrls: params.imageUrls,
+      },
+      include: {
+        user: {
+          select: { id: true, name: true, role: true },
+        },
+      },
+    });
+  }
+
+  async findHistory(taskId: string) {
+    return prisma.taskLog.findMany({
+      where: { taskId },
+      include: {
+        user: {
+          select: { id: true, name: true, role: true },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
 }

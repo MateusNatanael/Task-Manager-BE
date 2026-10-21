@@ -2,7 +2,13 @@ import { Router } from 'express';
 import { TaskController } from './controllers/task.controller';
 import { ensureAuthenticated, ensureRole } from '../../shared/middlewares/ensure-authenticated';
 import { validateBody, validateQuery } from '../../shared/middlewares/validate-request';
-import { createTaskSchema, listTasksQuerySchema } from './dtos/task.dto';
+import {
+  createTaskSchema,
+  listTasksQuerySchema,
+  assignTaskSchema,
+  updateTaskStatusSchema,
+  createTaskNoteSchema,
+} from './dtos/task.dto';
 import { Role } from '@prisma/client';
 
 const tasksRoutes = Router();
@@ -27,24 +33,29 @@ tasksRoutes.post(
   taskController.create
 );
 
-// PATCH /api/tasks/:id/assign - Assign owner (Placeholder for next step)
-tasksRoutes.patch('/:id/assign', async (_req, res) => {
-  res.json({ message: 'Assign task placeholder' });
-});
+// PATCH /api/tasks/:id/assign - Assign owner (Restricted to management roles)
+tasksRoutes.patch(
+  '/:id/assign',
+  ensureRole([Role.ANALYST, Role.MANAGER, Role.SUPERVISOR, Role.FOREMAN]),
+  validateBody(assignTaskSchema),
+  taskController.assign
+);
 
-// PATCH /api/tasks/:id/status - Transition status (Placeholder for next step)
-tasksRoutes.patch('/:id/status', async (_req, res) => {
-  res.json({ message: 'Update task status placeholder' });
-});
+// PATCH /api/tasks/:id/status - Transition status with state machine checks
+tasksRoutes.patch(
+  '/:id/status',
+  validateBody(updateTaskStatusSchema),
+  taskController.updateStatus
+);
 
-// POST /api/tasks/:id/notes - Add note/images (Placeholder for next step)
-tasksRoutes.post('/:id/notes', async (_req, res) => {
-  res.json({ message: 'Add task note placeholder' });
-});
+// POST /api/tasks/:id/notes - Add note and image URLs
+tasksRoutes.post(
+  '/:id/notes',
+  validateBody(createTaskNoteSchema),
+  taskController.addNote
+);
 
-// GET /api/tasks/:id/history - Chronological transition logs (Placeholder for next step)
-tasksRoutes.get('/:id/history', async (_req, res) => {
-  res.json({ message: 'Task history placeholder' });
-});
+// GET /api/tasks/:id/history - Chronological transition logs
+tasksRoutes.get('/:id/history', taskController.history);
 
 export { tasksRoutes };

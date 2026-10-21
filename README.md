@@ -56,10 +56,10 @@ src/
 | **Módulo Equipment** | Concluído | `GET /api/equipment` (listagem com filtros por `unitId` e `category`). |
 | **Tasks: Criação & Matriz GUT** | Concluído | `POST /api/tasks` restrito a `ANALYST`/`MANAGER`, cálculo atômico do Score GUT e log inicial no `TaskLog`. |
 | **Tasks: Listagens & Detalhes** | Concluído | `GET /api/tasks` (ordenado por `priorityScore DESC, createdAt ASC`), `GET /api/tasks/my-tasks` e `GET /api/tasks/:id`. |
-| **Tasks: Atribuição (`assign`)** | ⏳ Pendente | `PATCH /api/tasks/:id/assign` para definir técnico/operador responsável. |
-| **Tasks: Transição de Status** | ⏳ Pendente | `PATCH /api/tasks/:id/status` com transações atômicas, regras de bloqueio e finalização. |
-| **Tasks: Notas & Evidências** | ⏳ Pendente | `POST /api/tasks/:id/notes` para adição de observações e URLs de imagens. |
-| **Tasks: Histórico (`history`)** | ⏳ Pendente | `GET /api/tasks/:id/history` para consulta cronológica de transições no `TaskLog`. |
+| **Tasks: Atribuição (`assign`)** | Concluído | `PATCH /api/tasks/:id/assign` restrito a gestores, validação de usuário ativo e auditoria no `TaskLog`. |
+| **Tasks: Transição de Status** | Concluído | `PATCH /api/tasks/:id/status` com transações atômicas, validações de bloqueio (`reason >= 10` e `attachmentUrl`), resolução e aprovação de entrega. |
+| **Tasks: Notas & Evidências** | Concluído | `POST /api/tasks/:id/notes` para adição de observações e URLs de imagens por usuários autenticados. |
+| **Tasks: Histórico (`history`)** | Concluído | `GET /api/tasks/:id/history` para consulta cronológica de transições e auditoria no `TaskLog`. |
 | **Uploads & Presigned URLs** | ⏳ Pendente | Integração com S3/R2 para anexos de tarefas e bloqueios. |
 
 ---
@@ -68,6 +68,7 @@ src/
 
 ### A. Papéis de Usuário (RBAC)
 - **Criação de Tarefas:** Exclusiva para `ANALYST` e `MANAGER`.
+- **Atribuição:** Gestão (`ANALYST`, `MANAGER`, `SUPERVISOR`, `FOREMAN`).
 - **Execução:** Papéis técnicos (`OPERATOR`, `TECHNICIAN`, `FOREMAN`, etc.).
 
 ### B. Matriz de Prioridade GUT
@@ -81,7 +82,7 @@ $$\text{Score} = G \times U \times T \quad (1 \le \text{Score} \le 125)$$
 O ciclo de vida deve registrar transição atômica (`prisma.$transaction`) gravando em `Task` e `TaskLog`:
 1. `RECEIVED`: Criada no sistema (log inicial gerado com `previousStatus: null`).
 2. `ASSIGNED`: Atribuída a um operador (`ownerId`).
-3. `IN_PROGRESS`: Tarefa assumida pelo operador em execução.
+3. `IN_PROGRESS`: Tarefa assumida pelo operador em execução no local.
 4. `BLOCKED`: Requer obrigatoriamente justificativa (`reason >= 10` caracteres) e URL do anexo comprobatório (`attachmentUrl`).
 5. `DONE`: Tarefa concluída; define `deliveryDate = now()`. A aprovação pelo gestor registra `acceptedDate = now()`.
 
@@ -128,10 +129,33 @@ O ciclo de vida deve registrar transição atômica (`prisma.$transaction`) grav
       "trend": 4
     }
     ```
-- *(Em Desenvolvimento)* `PATCH /api/tasks/:id/assign` - Atribuição de técnico responsável.
-- *(Em Desenvolvimento)* `PATCH /api/tasks/:id/status` - Transição de status da tarefa.
-- *(Em Desenvolvimento)* `POST /api/tasks/:id/notes` - Adição de notas/fotos.
-- *(Em Desenvolvimento)* `GET /api/tasks/:id/history` - Histórico de transições.
+- `PATCH /api/tasks/:id/assign` *(Auth obrigatório: ANALYST, MANAGER, SUPERVISOR ou FOREMAN)*
+  - **Body:** `{ "ownerId": "uuid-do-operador" }`
+  - **Efeito:** Atualiza status para `ASSIGNED` e grava auditoria atômica no `TaskLog`.
+- `PATCH /api/tasks/:id/status` *(Auth obrigatório)*
+  - **Body:**
+    ```json
+    {
+      "newStatus": "BLOCKED",
+      "reason": "Aguardando peças de reposição do fornecedor",
+      "attachmentUrl": "https://meubucket.com/evidencia.jpg"
+    }
+    ```
+  - **Validações:**
+    - `IN_PROGRESS -> BLOCKED`: Exige `reason >= 10` caracteres e `attachmentUrl` (HTTP 422 se ausente).
+    - `BLOCKED -> IN_PROGRESS`: Exige `reason >= 5` caracteres descrevendo a resolução.
+    - `IN_PROGRESS -> DONE`: Grava `deliveryDate = now()`.
+    - `DONE` (por gestor): Grava `acceptedDate = now()`.
+- `POST /api/tasks/:id/notes` *(Auth obrigatório)*
+  - **Body:**
+    ```json
+    {
+      "text": "Iniciada a desmontagem dos conectores da base",
+      "imageUrls": ["https://meubucket.com/foto1.jpg"]
+    }
+    ```
+- `GET /api/tasks/:id/history` *(Auth obrigatório)*
+  - Retorna a lista cronológica ordenada de todas as transições registradas em `TaskLog`.
 
 ---
 
