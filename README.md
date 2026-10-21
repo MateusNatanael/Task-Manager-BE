@@ -197,6 +197,11 @@ O ciclo de vida deve registrar transição atômica (`prisma.$transaction`) grav
    ```
    A API estará rodando em `http://localhost:3333`.
 
+6. **Executar os testes automatizados:**
+   ```bash
+   npm test
+   ```
+
 ---
 
 ## 🧪 7. Usuários de Teste Pré-configurados (Seed)
