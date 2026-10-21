@@ -306,4 +306,90 @@ describe('TaskService', () => {
       expect(result).toEqual(logsMock);
     });
   });
+
+  describe('getMetrics', () => {
+    it('should throw 404 if specified unit does not exist', async () => {
+      unitsRepositoryMock.findById.mockResolvedValue(null);
+
+      await expect(
+        taskService.getMetrics({ unitId: 'unit-unknown' })
+      ).rejects.toThrow(new AppError('Unit not found', 404));
+    });
+
+    it('should calculate aggregated metrics, lead times, blocking rate and top equipment', async () => {
+      taskRepositoryMock.findTasksForMetrics = vi.fn().mockResolvedValue([
+        {
+          id: 'task-1',
+          status: TaskStatus.DONE,
+          criticality: Criticality.HIGH,
+          createdAt: new Date('2026-10-01T10:00:00Z'),
+          deliveryDate: new Date('2026-10-01T14:00:00Z'), // 4 hours
+          acceptedDate: new Date('2026-10-01T15:00:00Z'),
+          equipment: { id: 'eq-1', tagId: 'GER-01', category: 'ELECTRICAL' },
+          transitions: [],
+        },
+        {
+          id: 'task-2',
+          status: TaskStatus.DONE,
+          criticality: Criticality.MEDIUM,
+          createdAt: new Date('2026-10-02T10:00:00Z'),
+          deliveryDate: new Date('2026-10-02T16:00:00Z'), // 6 hours
+          acceptedDate: null,
+          equipment: { id: 'eq-1', tagId: 'GER-01', category: 'ELECTRICAL' },
+          transitions: [],
+        },
+        {
+          id: 'task-3',
+          status: TaskStatus.BLOCKED,
+          criticality: Criticality.HIGH,
+          createdAt: new Date('2026-10-03T10:00:00Z'),
+          deliveryDate: null,
+          acceptedDate: null,
+          equipment: { id: 'eq-2', tagId: 'COMP-02', category: 'MECHANICAL' },
+          transitions: [{ id: 'trans-1' }],
+        },
+        {
+          id: 'task-4',
+          status: TaskStatus.IN_PROGRESS,
+          criticality: Criticality.LOW,
+          createdAt: new Date('2026-10-04T10:00:00Z'),
+          deliveryDate: null,
+          acceptedDate: null,
+          equipment: null,
+          transitions: [],
+        },
+      ]);
+
+      const metrics = await taskService.getMetrics({});
+
+      expect(metrics.totalTasks).toBe(4);
+      expect(metrics.byStatus).toEqual({
+        [TaskStatus.RECEIVED]: 0,
+        [TaskStatus.ASSIGNED]: 0,
+        [TaskStatus.IN_PROGRESS]: 1,
+        [TaskStatus.BLOCKED]: 1,
+        [TaskStatus.DONE]: 2,
+      });
+      expect(metrics.byCriticality).toEqual({
+        [Criticality.HIGH]: 2,
+        [Criticality.MEDIUM]: 1,
+        [Criticality.LOW]: 1,
+      });
+      expect(metrics.blockingMetrics).toEqual({
+        currentlyBlocked: 1,
+        everBlockedCount: 1,
+        blockingRatePercentage: 25.0, // 1 out of 4 = 25%
+      });
+      expect(metrics.completionMetrics).toEqual({
+        totalDone: 2,
+        totalAccepted: 1,
+        averageLeadTimeHours: 5.0, // (4h + 6h) / 2 = 5h
+      });
+      expect(metrics.topEquipments).toEqual([
+        { tagId: 'GER-01', category: 'ELECTRICAL', count: 2 },
+        { tagId: 'COMP-02', category: 'MECHANICAL', count: 1 },
+      ]);
+    });
+  });
 });
+

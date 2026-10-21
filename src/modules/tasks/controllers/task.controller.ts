@@ -113,4 +113,17 @@ export class TaskController {
     const logs = await this.taskService.getTaskHistory(id);
     res.json(logs);
   };
+
+  metrics = async (req: Request, res: Response): Promise<void> => {
+    const { unitId, startDate, endDate } = req.query;
+
+    const data = await this.taskService.getMetrics({
+      unitId: unitId ? String(unitId) : undefined,
+      startDate: startDate ? String(startDate) : undefined,
+      endDate: endDate ? String(endDate) : undefined,
+    });
+
+    res.json(data);
+  };
 }
+

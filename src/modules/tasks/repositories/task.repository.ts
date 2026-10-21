@@ -240,4 +240,45 @@ export class TaskRepository {
       orderBy: { createdAt: 'asc' },
     });
   }
+
+  async findTasksForMetrics(filters: {
+    unitId?: string;
+    startDate?: Date;
+    endDate?: Date;
+  } = {}) {
+    return prisma.task.findMany({
+      where: {
+        unitId: filters.unitId,
+        createdAt: {
+          gte: filters.startDate,
+          lte: filters.endDate,
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+        criticality: true,
+        priorityScore: true,
+        createdAt: true,
+        deliveryDate: true,
+        acceptedDate: true,
+        equipmentId: true,
+        equipment: {
+          select: {
+            id: true,
+            tagId: true,
+            category: true,
+          },
+        },
+        transitions: {
+          where: {
+            newStatus: TaskStatus.BLOCKED,
+          },
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+  }
 }

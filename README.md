@@ -60,6 +60,7 @@ src/
 | **Tasks: Transição de Status** | Concluído | `PATCH /api/tasks/:id/status` com transações atômicas, validações de bloqueio (`reason >= 10` e `attachmentUrl`), resolução e aprovação de entrega. |
 | **Tasks: Notas & Evidências** | Concluído | `POST /api/tasks/:id/notes` para adição de observações e URLs de imagens por usuários autenticados. |
 | **Tasks: Histórico (`history`)** | Concluído | `GET /api/tasks/:id/history` para consulta cronológica de transições e auditoria no `TaskLog`. |
+| **Dashboard & Métricas (`metrics`)** | Concluído | `GET /api/tasks/metrics` com contagem por status, criticidade, taxa de bloqueio, lead time médio e top equipamentos. |
 | **Uploads & Presigned URLs** | ⏳ Pendente | Integração com S3/R2 para anexos de tarefas e bloqueios. |
 
 ---
@@ -108,12 +109,35 @@ O ciclo de vida deve registrar transição atômica (`prisma.$transaction`) grav
   - **Query Params:** `?unitId=...&category=ELECTRICAL`
   - **Retorno:** Lista de equipamentos com dados de localização e categoria.
 
-### Tarefas
+### Tarefas & Indicadores
 - `GET /api/tasks` *(Auth obrigatório)*
   - **Query Params:** `?unitId=...&status=RECEIVED&ownerId=...`
   - **Ordenação padrão:** `priorityScore DESC, createdAt ASC`.
 - `GET /api/tasks/my-tasks` *(Auth obrigatório)*
   - Retorna as tarefas onde `ownerId == req.user.id`.
+- `GET /api/tasks/metrics` *(Auth obrigatório)*
+  - **Query Params:** `?unitId=...&startDate=2026-10-01&endDate=2026-10-31`
+  - **Retorno:**
+    ```json
+    {
+      "totalTasks": 42,
+      "byStatus": { "RECEIVED": 5, "ASSIGNED": 8, "IN_PROGRESS": 12, "BLOCKED": 3, "DONE": 14 },
+      "byCriticality": { "HIGH": 10, "MEDIUM": 22, "LOW": 10 },
+      "blockingMetrics": {
+        "currentlyBlocked": 3,
+        "everBlockedCount": 5,
+        "blockingRatePercentage": 11.9
+      },
+      "completionMetrics": {
+        "totalDone": 14,
+        "totalAccepted": 11,
+        "averageLeadTimeHours": 4.5
+      },
+      "topEquipments": [
+        { "tagId": "GER-01", "category": "ELECTRICAL", "count": 6 }
+      ]
+    }
+    ```
 - `GET /api/tasks/:id` *(Auth obrigatório)*
   - Retorna os dados completos da tarefa, unidade, equipamento e responsáveis.
 - `POST /api/tasks` *(Auth obrigatório: ANALYST ou MANAGER)*

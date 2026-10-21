@@ -8,6 +8,7 @@ import {
   assignTaskSchema,
   updateTaskStatusSchema,
   createTaskNoteSchema,
+  tasksMetricsQuerySchema,
 } from './dtos/task.dto';
 import { Role } from '@prisma/client';
 
@@ -21,6 +22,9 @@ tasksRoutes.get('/', validateQuery(listTasksQuerySchema), taskController.list);
 
 // GET /api/tasks/my-tasks - Current operator's assigned tasks
 tasksRoutes.get('/my-tasks', taskController.myTasks);
+
+// GET /api/tasks/metrics - Aggregated metrics and indicators
+tasksRoutes.get('/metrics', validateQuery(tasksMetricsQuerySchema), taskController.metrics);
 
 // GET /api/tasks/:id - Task details
 tasksRoutes.get('/:id', taskController.getById);

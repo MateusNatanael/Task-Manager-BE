@@ -3,7 +3,13 @@ import { TaskRepository, FindTasksFilters } from '../repositories/task.repositor
 import { UnitsRepository } from '../../units/repositories/units.repository';
 import { EquipmentRepository } from '../../equipment/repositories/equipment.repository';
 import { UsersRepository } from '../../users/repositories/users.repository';
-import { AssignTaskDTO, CreateTaskDTO, CreateTaskNoteDTO, UpdateTaskStatusDTO } from '../dtos/task.dto';
+import {
+  AssignTaskDTO,
+  CreateTaskDTO,
+  CreateTaskNoteDTO,
+  UpdateTaskStatusDTO,
+  TasksMetricsQueryDTO,
+} from '../dtos/task.dto';
 import { AppError } from '../../../shared/errors/app-error';
 
 export class TaskService {
@@ -221,4 +227,128 @@ export class TaskService {
 
     return this.taskRepository.findHistory(taskId);
   }
+
+  async getMetrics(filters: TasksMetricsQueryDTO) {
+    if (filters.unitId) {
+      const unit = await this.unitsRepository.findById(filters.unitId);
+      if (!unit) {
+        throw new AppError('Unit not found', 404);
+      }
+    }
+
+    const startDate = filters.startDate ? new Date(filters.startDate) : undefined;
+    const endDate = filters.endDate ? new Date(filters.endDate) : undefined;
+
+    const tasks = await this.taskRepository.findTasksForMetrics({
+      unitId: filters.unitId,
+      startDate,
+      endDate,
+    });
+
+    const totalTasks = tasks.length;
+
+    // Agrupamento por Status
+    const byStatus = {
+      [TaskStatus.RECEIVED]: 0,
+      [TaskStatus.ASSIGNED]: 0,
+      [TaskStatus.IN_PROGRESS]: 0,
+      [TaskStatus.BLOCKED]: 0,
+      [TaskStatus.DONE]: 0,
+    };
+
+    // Agrupamento por Criticidade
+    const byCriticality = {
+      [Criticality.HIGH]: 0,
+      [Criticality.MEDIUM]: 0,
+      [Criticality.LOW]: 0,
+    };
+
+    let currentlyBlocked = 0;
+    let everBlockedCount = 0;
+    let totalDone = 0;
+    let totalAccepted = 0;
+    let totalLeadTimeHours = 0;
+    let doneWithDatesCount = 0;
+
+    const equipmentMap = new Map<string, { tagId: string; category: string; count: number }>();
+
+    for (const t of tasks) {
+      // Status count
+      if (byStatus[t.status] !== undefined) {
+        byStatus[t.status]++;
+      }
+
+      // Criticality count
+      if (byCriticality[t.criticality] !== undefined) {
+        byCriticality[t.criticality]++;
+      }
+
+      // Bloqueios
+      if (t.status === TaskStatus.BLOCKED) {
+        currentlyBlocked++;
+      }
+      if (t.status === TaskStatus.BLOCKED || (t.transitions && t.transitions.length > 0)) {
+        everBlockedCount++;
+      }
+
+      // Conclusão e Lead Time
+      if (t.status === TaskStatus.DONE) {
+        totalDone++;
+      }
+      if (t.acceptedDate) {
+        totalAccepted++;
+      }
+      if (t.deliveryDate && t.createdAt) {
+        const diffHours = (t.deliveryDate.getTime() - t.createdAt.getTime()) / (1000 * 60 * 60);
+        if (diffHours >= 0) {
+          totalLeadTimeHours += diffHours;
+          doneWithDatesCount++;
+        }
+      }
+
+      // Top equipamentos com ordens de serviço
+      if (t.equipment) {
+        const existing = equipmentMap.get(t.equipment.id);
+        if (existing) {
+          existing.count++;
+        } else {
+          equipmentMap.set(t.equipment.id, {
+            tagId: t.equipment.tagId,
+            category: t.equipment.category,
+            count: 1,
+          });
+        }
+      }
+    }
+
+    const averageLeadTimeHours = doneWithDatesCount > 0
+      ? Number((totalLeadTimeHours / doneWithDatesCount).toFixed(1))
+      : 0;
+
+    const blockingRate = totalTasks > 0
+      ? Number(((everBlockedCount / totalTasks) * 100).toFixed(1))
+      : 0;
+
+    const topEquipments = Array.from(equipmentMap.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    return {
+      totalTasks,
+      byStatus,
+      byCriticality,
+      blockingMetrics: {
+        currentlyBlocked,
+        everBlockedCount,
+        blockingRatePercentage: blockingRate,
+      },
+      completionMetrics: {
+        totalDone,
+        totalAccepted,
+        averageLeadTimeHours,
+      },
+      topEquipments,
+    };
+  }
 }
+

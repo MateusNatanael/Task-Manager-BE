@@ -45,3 +45,11 @@ export const createTaskNoteSchema = z.object({
 });
 
 export type CreateTaskNoteDTO = z.infer<typeof createTaskNoteSchema>;
+
+export const tasksMetricsQuerySchema = z.object({
+  unitId: uuidSchema.optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+});
+
+export type TasksMetricsQueryDTO = z.infer<typeof tasksMetricsQuerySchema>;
