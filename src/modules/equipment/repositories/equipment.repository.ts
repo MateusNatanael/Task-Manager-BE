@@ -41,4 +41,66 @@ export class EquipmentRepository {
       where: { tagId },
     });
   }
+
+  async create(data: {
+    tagId: string;
+    category: EquipmentCategory;
+    unitId: string;
+    specificLocation: string;
+    observedFault?: string | null;
+    preventiveData?: any;
+  }) {
+    return prisma.equipment.create({
+      data,
+      include: {
+        unit: {
+          select: { id: true, name: true, address: true },
+        },
+      },
+    });
+  }
+
+  async update(
+    id: string,
+    data: {
+      tagId?: string;
+      category?: EquipmentCategory;
+      unitId?: string;
+      specificLocation?: string;
+      observedFault?: string | null;
+      preventiveData?: any;
+    }
+  ) {
+    return prisma.equipment.update({
+      where: { id },
+      data,
+      include: {
+        unit: {
+          select: { id: true, name: true, address: true },
+        },
+      },
+    });
+  }
+
+  async findTasksByEquipmentId(equipmentId: string) {
+    return prisma.task.findMany({
+      where: { equipmentId },
+      include: {
+        createdBy: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+        owner: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+        transitions: {
+          include: {
+            user: { select: { id: true, name: true, role: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
 }
+

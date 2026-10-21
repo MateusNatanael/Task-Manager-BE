@@ -53,7 +53,7 @@ src/
 | **Middlewares Compartilhados** | Concluído | `ensureAuthenticated`, `ensureRole`, `validateBody`, `validateQuery`, `errorHandler`. |
 | **Módulo Units** | Concluído | `GET /api/units` (listagem de unidades ativas). |
 | **Módulo Users** | Concluído | `GET /api/users` (listagem com filtros por `role` e `unitId`). |
-| **Módulo Equipment** | Concluído | `GET /api/equipment` (listagem com filtros por `unitId` e `category`). |
+| **Módulo Equipment** | Concluído | CRUD de ativos (`GET`, `POST`, `PATCH`), detalhes por ID e histórico de manutenções/tarefas vinculadas. |
 | **Tasks: Criação & Matriz GUT** | Concluído | `POST /api/tasks` restrito a `ANALYST`/`MANAGER`, cálculo atômico do Score GUT e log inicial no `TaskLog`. |
 | **Tasks: Listagens & Detalhes** | Concluído | `GET /api/tasks` (ordenado por `priorityScore DESC, createdAt ASC`), `GET /api/tasks/my-tasks` e `GET /api/tasks/:id`. |
 | **Tasks: Atribuição (`assign`)** | Concluído | `PATCH /api/tasks/:id/assign` restrito a gestores, validação de usuário ativo e auditoria no `TaskLog`. |
@@ -108,6 +108,25 @@ O ciclo de vida deve registrar transição atômica (`prisma.$transaction`) grav
 - `GET /api/equipment` *(Auth obrigatório)*
   - **Query Params:** `?unitId=...&category=ELECTRICAL`
   - **Retorno:** Lista de equipamentos com dados de localização e categoria.
+- `GET /api/equipment/:id` *(Auth obrigatório)*
+  - **Retorno:** Detalhes completos do equipamento e dados da unidade vinculada.
+- `GET /api/equipment/:id/tasks` *(Auth obrigatório)*
+  - **Retorno:** Histórico cronológico decrescente de ordens de serviço / tarefas associadas ao equipamento.
+- `POST /api/equipment` *(Auth obrigatório: ANALYST, MANAGER, SUPERVISOR ou FOREMAN)*
+  - **Body:**
+    ```json
+    {
+      "tagId": "GER-02",
+      "category": "ELECTRICAL",
+      "unitId": "11111111-1111-4111-8111-111111111111",
+      "specificLocation": "Sala de Máquinas B - Subsolo",
+      "observedFault": null,
+      "preventiveData": { "intervalDays": 90, "lastReview": "2026-09-15" }
+    }
+    ```
+- `PATCH /api/equipment/:id` *(Auth obrigatório: ANALYST, MANAGER, SUPERVISOR ou FOREMAN)*
+  - **Body:** Campos opcionais para atualização (`tagId`, `category`, `unitId`, `specificLocation`, `observedFault`, `preventiveData`).
+
 
 ### Tarefas & Indicadores
 - `GET /api/tasks` *(Auth obrigatório)*
