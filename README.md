@@ -1,178 +1,185 @@
-📋 Backend Technical Specification & Architecture GuidelinesThis document provides system design, data modeling, business constraints, and API contracts for the Task & Asset Management backend service.1. Tech Stack & ArchitectureRuntime: Node.js (v20+) with TypeScriptWeb Framework: Express or FastifyORM: Prisma ORMDatabase: PostgreSQLInput Validation: ZodStorage: S3-compatible (Cloudflare R2 or AWS S3 via presigned URLs)Architecture: Modular Monolith (Controller -> Service -> Repository/ORM), domain-separated modules.2. Directory Structuresrc/
-├── config/ # DB client, env vars, storage config
-├── shared/ # Global middlewares (auth, errors, logger)
-│ ├── errors/
-│ └── middlewares/
-└── modules/
-├── units/ # Physical branches/stores
-├── users/ # Roles, auth, assignments
-├── equipment/ # Asset inventory
-└── tasks/ # Core task engine
-├── dtos/ # Zod schemas & payload contracts
-├── controllers/
-├── services/ # Business logic, state transitions & logs
-└── repositories/ 3. Database Schema (prisma/schema.prisma)datasource db {
-provider = "postgresql"
-url = env("DATABASE_URL")
-}
+# 📋 Task & Asset Management - Backend Service (Task-Manager-BE)
 
-generator client {
-provider = "prisma-client-js"
-}
+Serviço backend responsável pela gestão de ativos, ordens de serviço, cálculo de matriz de prioridades (GUT) e controle do ciclo de vida de tarefas para equipes de manutenção e operações em múltiplas unidades.
 
-enum Role {
-ANALYST
-MANAGER
-SUPERVISOR
-FOREMAN
-TECHNICIAN
-OPERATOR
-}
+---
 
-enum Specialty {
-ELECTRICAL
-MECHANICAL
-HVAC
-INFRASTRUCTURE
-PROJECT
-}
+## 🚀 1. Tech Stack & Ferramentas
 
-enum EquipmentCategory {
-ELECTRICAL
-MECHANICAL
-INFRASTRUCTURE
-PROJECT
-CABLING
-CIVIL
-ENGINEERING
-}
+- **Runtime & Linguagem:** [Node.js](https://nodejs.org/) (v20+) com [TypeScript](https://www.typescriptlang.org/)
+- **Framework Web:** [Express 5](https://expressjs.com/)
+- **ORM & Banco de Dados:** [Prisma ORM](https://www.prisma.io/) com [PostgreSQL](https://www.postgresql.org/)
+- **Validação de Schemas:** [Zod](https://zod.dev/)
+- **Autenticação & Segurança:** JWT (`jsonwebtoken`), hash de senha (`bcryptjs`), `helmet` e `cors`
+- **Ambiente de Desenvolvimento:** `tsx` (hot-reload) e Docker Compose para o banco de dados
+- **Armazenamento de Arquivos (Planejado):** Compatível com S3 (Cloudflare R2 / AWS S3) via URLs pré-assinadas (*Presigned URLs*)
 
-enum TaskStatus {
-RECEIVED
-ASSIGNED
-IN_PROGRESS
-BLOCKED
-DONE
-}
+---
 
-enum Criticality {
-LOW
-MEDIUM
-HIGH
-}
+## 🏛️ 2. Arquitetura do Projeto
 
-enum MatrixType {
-GUT
-ICE
-NPR
-}
+O projeto adota a arquitetura de **Monólito Modular** (*Modular Monolith*), orientado a domínios de negócio com separação estrita de responsabilidades:
+`Route -> Controller -> Service -> Repository (Prisma)`.
 
-model Unit {
-id String @id @default(uuid())
-name String
-address String
-criticalityFactor String? @map("criticality_factor")
-isActive Boolean @default(true) @map("is_active")
-createdAt DateTime @default(now()) @map("created_at")
+```text
+src/
+├── @types/          # Extensões de tipagem do Express (ex: Request.user)
+├── config/          # Configuração de variáveis de ambiente e cliente Prisma
+│   ├── env.ts
+│   └── prisma.ts
+├── shared/          # Recursos transversais e compartilhados
+│   ├── errors/      # AppError customizado
+│   └── middlewares/ # Autenticação (JWT + RBAC), validação Zod e errorHandler global
+├── modules/         # Módulos de domínio
+│   ├── users/       # Autenticação, usuários, papéis e especialidades
+│   ├── units/       # Cadastro e listagem de filiais/unidades
+│   ├── equipment/   # Inventário de ativos e equipamentos
+│   └── tasks/       # Engine central de tarefas, matriz GUT e histórico
+├── app.ts           # Configuração de middlewares do Express
+├── routes.ts        # Registro centralizado de rotas
+└── index.ts         # Ponto de entrada do servidor HTTP
+```
 
-users User[]
-equipments Equipment[]
-tasks Task[]
+---
 
-@@map("units")
-}
+## 📊 3. Status de Implementação
 
-model User {
-id String @id @default(uuid())
-name String
-email String @unique
-passwordHash String @map("password_hash")
-role Role
-specialty Specialty?
-unitId String @map("unit_id")
-isActive Boolean @default(true) @map("is_active")
-createdAt DateTime @default(now()) @map("created_at")
+| Funcionalidade / Módulo | Status | Descrição |
+| :--- | :---: | :--- |
+| **Setup & Infraestrutura** | Concluído | Express, TypeScript, Docker Compose (PostgreSQL), Prisma configurado. |
+| **Modelagem do Banco (Prisma)** | Concluído | Models `Unit`, `User`, `Equipment`, `Task`, `TaskLog`, `TaskNote` com Enums. |
+| **Database Seed** | Concluído | Unidade matriz, usuários com roles (Gerente e Operador) e equipamentos de teste. |
+| **Autenticação (JWT)** | Concluído | Endpoint `/api/auth/login` com validação de senha via `bcryptjs`. |
+| **Middlewares Compartilhados** | Concluído | `ensureAuthenticated`, `ensureRole`, `validateBody`, `validateQuery`, `errorHandler`. |
+| **Módulo Units** | Concluído | `GET /api/units` (listagem de unidades ativas). |
+| **Módulo Users** | Concluído | `GET /api/users` (listagem com filtros por `role` e `unitId`). |
+| **Módulo Equipment** | Concluído | `GET /api/equipment` (listagem com filtros por `unitId` e `category`). |
+| **Tasks: Criação & Matriz GUT** | Concluído | `POST /api/tasks` restrito a `ANALYST`/`MANAGER`, cálculo atômico do Score GUT e log inicial no `TaskLog`. |
+| **Tasks: Listagens & Detalhes** | Concluído | `GET /api/tasks` (ordenado por `priorityScore DESC, createdAt ASC`), `GET /api/tasks/my-tasks` e `GET /api/tasks/:id`. |
+| **Tasks: Atribuição (`assign`)** | ⏳ Pendente | `PATCH /api/tasks/:id/assign` para definir técnico/operador responsável. |
+| **Tasks: Transição de Status** | ⏳ Pendente | `PATCH /api/tasks/:id/status` com transações atômicas, regras de bloqueio e finalização. |
+| **Tasks: Notas & Evidências** | ⏳ Pendente | `POST /api/tasks/:id/notes` para adição de observações e URLs de imagens. |
+| **Tasks: Histórico (`history`)** | ⏳ Pendente | `GET /api/tasks/:id/history` para consulta cronológica de transições no `TaskLog`. |
+| **Uploads & Presigned URLs** | ⏳ Pendente | Integração com S3/R2 para anexos de tarefas e bloqueios. |
 
-unit Unit @relation(fields: [unitId], references: [id])
-tasksCreated Task[] @relation("TasksCreated")
-tasksAssigned Task[] @relation("TasksAssigned")
-taskTransitions TaskLog[]
-taskNotes TaskNote[]
+---
 
-@@map("users")
-}
+## ⚙️ 4. Regras de Negócio Principais
 
-model Equipment {
-id String @id @default(uuid())
-tagId String @unique @map("tag_id")
-category EquipmentCategory
-unitId String @map("unit_id")
-specificLocation String @map("specific_location")
-observedFault String? @map("observed_fault")
-preventiveData Json? @default("{}") @map("preventive_data")
-createdAt DateTime @default(now()) @map("created_at")
+### A. Papéis de Usuário (RBAC)
+- **Criação de Tarefas:** Exclusiva para `ANALYST` e `MANAGER`.
+- **Execução:** Papéis técnicos (`OPERATOR`, `TECHNICIAN`, `FOREMAN`, etc.).
 
-unit Unit @relation(fields: [unitId], references: [id])
-tasks Task[]
+### B. Matriz de Prioridade GUT
+O cálculo é efetuado automaticamente na criação da tarefa:
+$$\text{Score} = G \times U \times T \quad (1 \le \text{Score} \le 125)$$
+- **HIGH:** $\text{Score} \ge 80$
+- **MEDIUM:** $30 \le \text{Score} < 80$
+- **LOW:** $\text{Score} < 30$
 
-@@map("equipments")
-}
+### C. Ciclo de Vida da Tarefa & Transições Atômicas
+O ciclo de vida deve registrar transição atômica (`prisma.$transaction`) gravando em `Task` e `TaskLog`:
+1. `RECEIVED`: Criada no sistema (log inicial gerado com `previousStatus: null`).
+2. `ASSIGNED`: Atribuída a um operador (`ownerId`).
+3. `IN_PROGRESS`: Tarefa assumida pelo operador em execução.
+4. `BLOCKED`: Requer obrigatoriamente justificativa (`reason >= 10` caracteres) e URL do anexo comprobatório (`attachmentUrl`).
+5. `DONE`: Tarefa concluída; define `deliveryDate = now()`. A aprovação pelo gestor registra `acceptedDate = now()`.
 
-model Task {
-id String @id @default(uuid())
-seqCode Int @default(autoincrement()) @map("seq_code")
-description String
-unitId String @map("unit_id")
-equipmentId String? @map("equipment_id")
-ownerId String? @map("owner_id")
-status TaskStatus @default(RECEIVED)
-riskFactor String? @map("risk_factor")
-matrixType MatrixType @map("matrix_type")
-priorityScore Int @map("priority_score")
-criticality Criticality
-deliveryDate DateTime? @map("delivery_date")
-acceptedDate DateTime? @map("accepted_date")
-createdById String @map("created_by_id")
-createdAt DateTime @default(now()) @map("created_at")
-updatedAt DateTime @updatedAt @map("updated_at")
+---
 
-unit Unit @relation(fields: [unitId], references: [id])
-equipment Equipment? @relation(fields: [equipmentId], references: [id])
-createdBy User @relation("TasksCreated", fields: [createdById], references: [id])
-owner User? @relation("TasksAssigned", fields: [ownerId], references: [id])
-transitions TaskLog[]
-notes TaskNote[]
+## 📡 5. Contratos de API (Endpoints)
 
-@@map("tasks")
-}
+### Health Check
+- `GET /health` - Retorna status, uptime e timestamp.
 
-model TaskLog {
-id String @id @default(uuid())
-taskId String @map("task_id")
-userId String @map("user_id")
-previousStatus TaskStatus? @map("previous_status")
-newStatus TaskStatus @map("new_status")
-reason String?
-attachmentUrl String? @map("attachment_url")
-createdAt DateTime @default(now()) @map("created_at")
+### Autenticação & Usuários
+- `POST /api/auth/login`
+  - **Body:** `{ "email": "manager@taskmanager.com", "password": "..." }`
+  - **Retorno:** Token JWT (`id`, `role`, `unitId`, `name`).
+- `GET /api/users` *(Auth obrigatório)*
+  - **Query Params:** `?role=OPERATOR&unitId=...`
+  - **Retorno:** Lista de usuários (sem o `passwordHash`).
 
-task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-user User @relation(fields: [userId], references: [id])
+### Unidades & Equipamentos
+- `GET /api/units` *(Auth obrigatório)*
+  - **Retorno:** Lista de unidades ativas.
+- `GET /api/equipment` *(Auth obrigatório)*
+  - **Query Params:** `?unitId=...&category=ELECTRICAL`
+  - **Retorno:** Lista de equipamentos com dados de localização e categoria.
 
-@@map("task_logs")
-}
+### Tarefas
+- `GET /api/tasks` *(Auth obrigatório)*
+  - **Query Params:** `?unitId=...&status=RECEIVED&ownerId=...`
+  - **Ordenação padrão:** `priorityScore DESC, createdAt ASC`.
+- `GET /api/tasks/my-tasks` *(Auth obrigatório)*
+  - Retorna as tarefas onde `ownerId == req.user.id`.
+- `GET /api/tasks/:id` *(Auth obrigatório)*
+  - Retorna os dados completos da tarefa, unidade, equipamento e responsáveis.
+- `POST /api/tasks` *(Auth obrigatório: ANALYST ou MANAGER)*
+  - **Body:**
+    ```json
+    {
+      "description": "Substituição do disjuntor principal",
+      "unitId": "11111111-1111-4111-8111-111111111111",
+      "equipmentId": "uuid-opcional",
+      "riskFactor": "Risco de interrupção da rede",
+      "gravity": 5,
+      "urgency": 4,
+      "trend": 4
+    }
+    ```
+- *(Em Desenvolvimento)* `PATCH /api/tasks/:id/assign` - Atribuição de técnico responsável.
+- *(Em Desenvolvimento)* `PATCH /api/tasks/:id/status` - Transição de status da tarefa.
+- *(Em Desenvolvimento)* `POST /api/tasks/:id/notes` - Adição de notas/fotos.
+- *(Em Desenvolvimento)* `GET /api/tasks/:id/history` - Histórico de transições.
 
-model TaskNote {
-id String @id @default(uuid())
-taskId String @map("task_id")
-userId String @map("user_id")
-text String
-imageUrls String[] @default([]) @map("image_urls")
-createdAt DateTime @default(now()) @map("created_at")
+---
 
-task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-user User @relation(fields: [userId], references: [id])
+## 🛠️ 6. Como Rodar Localmente
 
-@@map("task_notes")
-} 4. Business Core & State Transition RulesA. Task CreationPermissions: Restricted to ANALYST or MANAGER.Equipment: Optional at creation (equipmentId nullable).Matrix Score Calculation (GUT Example):
-$$Score = G \times U \times T \quad (1 \le Score \le 125)$$$Score \ge 80 \implies \text{HIGH}$$30 \le Score < 80 \implies \text{MEDIUM}$$Score < 30 \implies \text{LOW}$Initial Audit Log: Must create initial record in TaskLog (previousStatus: null, newStatus: RECEIVED).B. Atomic Transitions (prisma.$transaction)Every state transition must write to both Task and TaskLog atomically.RECEIVED $\to$ ASSIGNED: Requires ownerId (single technician/operator).ASSIGNED $\to$ IN_PROGRESS: Operator claims and starts execution on site.IN_PROGRESS $\to$ BLOCKED:Mandatory Validation: Both reason ($\ge 10$ chars) and attachmentUrl (proof image) are strictly required. Return HTTP 422 if missing.BLOCKED $\to$ IN_PROGRESS: Requires reason describing the resolution.IN_PROGRESS $\to$ DONE: Sets deliveryDate = now().DONE Validation / Acceptance: Manager approves the delivery, setting acceptedDate = now().5. API EndpointsAuth & UsersPOST /api/auth/login - Returns JWT (id, role, unitId).GET /api/users - User list (?role=OPERATOR&unitId=...).Units & AssetsGET /api/units - Branch/unit listing.GET /api/equipment - Asset list with filters (?unitId=...&category=...).TasksGET /api/tasks - General list sorted by priorityScore DESC, createdAt ASC (?unitId=...&status=...&ownerId=...).GET /api/tasks/my-tasks - Current operator's assigned tasks (ownerId == req.user.id).POST /api/tasks - Create task with matrix calculation.PATCH /api/tasks/:id/assign - Assign owner (ownerId).PATCH /api/tasks/:id/status - Transition status (newStatus, reason, attachmentUrl).POST /api/tasks/:id/notes - Add note/images.GET /api/tasks/:id/history - Chronological transition logs.
+### Pré-requisitos
+- Node.js 20+
+- Docker & Docker Compose
+
+### Passo a Passo
+
+1. **Clonar e instalar dependências:**
+   ```bash
+   git clone https://github.com/MateusNatanael/Task-Manager-BE.git
+   cd Task-Manager-BE
+   npm install
+   ```
+
+2. **Configurar variáveis de ambiente:**
+   Copie o arquivo `.env.example` para `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+
+3. **Subir o banco de dados (PostgreSQL):**
+   ```bash
+   docker-compose up -d
+   ```
+
+4. **Executar migrações do Prisma e alimentar dados iniciais (Seed):**
+   ```bash
+   npm run prisma:migrate
+   npm run prisma:seed
+   ```
+
+5. **Iniciar em modo de desenvolvimento:**
+   ```bash
+   npm run dev
+   ```
+   A API estará rodando em `http://localhost:3333`.
+
+---
+
+## 🧪 7. Usuários de Teste Pré-configurados (Seed)
+
+Após executar `npm run prisma:seed`, as seguintes credenciais ficam disponíveis:
+
+| Usuário | E-mail | Senha | Perfil (Role) | Permissão de Criação de Tarefas |
+| :--- | :--- | :---: | :---: | :---: |
+| **Carlos Gerente** | `manager@taskmanager.com` | `123456` | `MANAGER` | ✅ Sim |
+| **João Operador** | `operator@taskmanager.com` | `123456` | `OPERATOR` | ❌ Não (apenas execução) |
